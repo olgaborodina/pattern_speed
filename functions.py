@@ -110,3 +110,13 @@ def nan_equal(a,b):
     except AssertionError:
         return False
     return True
+
+def add_uncertanties(vr, phi, x, y, vr_scale, phi_scale, pa_scale):
+    np.random.seed(100)
+    vr_  = np.random.normal(loc=vr,  scale=vr_scale)
+    phi_ = np.random.normal(loc=phi, scale=phi_scale)
+    pa   = np.random.uniform(-pa_scale, pa_scale)
+    x_, y_, vx_, vy_ = rotate_bar(np.deg2rad(pa), x, y, 0, 0)
+    
+    return vr_, phi_, x_, y_
+    
