@@ -2,6 +2,11 @@ import numpy as np
 import scipy.stats as scp
 
 def rotate_bar(beta, X, Y, VX, VY):
+    """
+    Adds the rotation by an angle beta.
+    Inputs: Angle beta (in radians), Cartesian coordinates X and Y, and velocity projections VX and VY.
+    Outputs: X, Y, VX, VY after the rotation
+    """
     X_ = X * np.cos(beta) - Y * np.sin(beta)
     Y_ = X * np.sin(beta) + Y * np.cos(beta)
 
@@ -10,6 +15,11 @@ def rotate_bar(beta, X, Y, VX, VY):
     return X_, Y_, VX_, VY_
 
 def incline_galaxy(i, X, Y, VX, VY):
+    """
+    Incines galaxy by an angle i.
+    Inputs: Angle i (in radians), Cartesian coordinates X and Y, and velocity projections VX and VY.
+    Outputs: X (which is the same as input...), Y and line of sight velocity.
+    """
     VX_ = VX
     VZ_ = VY * np.sin(i)
     VY_ = VY * np.cos(i)
@@ -20,12 +30,22 @@ def incline_galaxy(i, X, Y, VX, VY):
     return X_, Y_, VZ_
 
 def add_solid_body_rotation(X, Y, VX, VY, Omegap=0.4):
+    """
+    Adds solid body rotation.
+    Inputs: Cartesian coordinates X and Y, velocity projections VX and VY, and angular velocity.
+    Outputs: new velocity projections VX and VY.
+    """
     PHI = np.arctan2(Y, X)
     VX -= np.sqrt(X ** 2 + Y ** 2) * Omegap * np.sin(PHI)
     VY += np.sqrt(X ** 2 + Y ** 2) * Omegap * np.cos(PHI)
     return VX, VY
 
 def mean_in_pixel(X, Y, step, values):
+    """
+    Calculates the mean of values in each pixel made from X and Y data with sides equal to step value.
+    Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel), values (2D array with the shape of X and Y).
+    Outputs: mean values per pixel (2D array).
+    """
     bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
     bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
     statistics, x_edge, y_edge, bins = scp.binned_statistic_2d(X.flatten(), Y.flatten(), values.flatten(),
@@ -33,11 +53,21 @@ def mean_in_pixel(X, Y, step, values):
     return statistics
 
 def centers_of_pixel(X, Y, step):
+    """
+    Calculates the center of each pixel.
+    Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel).
+    Outputs: centers of the pixels (two 2D arrays corresponding to X_centers and Y_centers).
+    """    
     bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
     bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
     return np.meshgrid(bounds_x[:-1] + step, bounds_y[:-1] + step, indexing='ij')
 
 def symmetrize_tw_integral(flux, x, y):
+    """
+    Makes slits symmetric. Tom's variant.
+    Inputs: Flux (2D array), Cartesian coordinates X and Y (2D arrays with the same shape).
+    Outputs: Symmetric flux with the shape of input flux.
+    """    
     flux_flat = flux.flatten()
     x_lon = x.flatten()
     y_lon = y.flatten()
@@ -89,6 +119,11 @@ def symmetrize_tw_integral(flux, x, y):
     return flux_final
 
 def make_symmetric(x_center_array, array):
+    """
+    Makes slits symmetric. My variant.
+    Inputs: Cartesian coordinate X (2D array) and Flux (2D array, the same shape).
+    Outputs: Symmetric flux with the shape of input flux.
+    """    
     left_side  = x_center_array[:, 0] <= 0
     right_side = x_center_array[:, 0] >= 0
     array_ = array.copy()
@@ -105,18 +140,28 @@ def make_symmetric(x_center_array, array):
     return array_
 
 def nan_equal(a,b):
+    """
+    Checks if array are the same, even if they have NaNs in them.
+    Inputs: Any two arrays.
+    Outputs: True/False.
+    """ 
     try:
         np.testing.assert_equal(a,b)
     except AssertionError:
         return False
     return True
 
-def add_uncertanties(vr, phi, x, y, vr_scale, phi_scale, pa_scale):
+def add_uncertanties(vr, rho, x, y, vr_scale, rho_scale, pa_scale):
+    """
+    Adds uncertainties to the velocity, flux and positional angle with corresponding scales.
+    Inputs: Values of velocity, flux and Cartesian coordinates and scales of randomization.
+    Outputs: New values of velocity, flux and Cartesian coordinates.
+    """ 
     np.random.seed(100)
     vr_  = np.random.normal(loc=vr,  scale=vr_scale)
-    phi_ = np.random.normal(loc=phi, scale=phi_scale)
+    rho_ = np.random.normal(loc=rho, scale=rho_scale)
     pa   = np.random.uniform(-pa_scale, pa_scale)
     x_, y_, vx_, vy_ = rotate_bar(np.deg2rad(pa), x, y, 0, 0)
     
-    return vr_, phi_, x_, y_
+    return vr_, rho_, x_, y_
     
