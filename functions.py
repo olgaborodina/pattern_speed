@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.stats as scp
+from scipy.odr import Model, ODR, RealData
 
 def rotate_bar(beta, X, Y, VX, VY):
     """
@@ -164,4 +165,39 @@ def add_uncertanties(vr, rho, x, y, vr_scale, rho_scale, pa_scale):
     x_, y_, vx_, vy_ = rotate_bar(np.deg2rad(pa), x, y, 0, 0)
     
     return vr_, rho_, x_, y_
+
+def linear_fit(theta, x):
+    """
+    Linear fitting function
+    Inputs: Parameters (1D array with the length=2) and x
+    Outputs: y
+    """
+    return theta[0] * x + theta[1]
+
+
+def odr_fit(x, x_err, y, y_err):
+    """
+    Fits data with linear function
+    Inputs: x and its errors x_err, y and its errors y_err (1D arrays all of the same shape)
+    Outputs: best fitting parameters of linear function and their errors (all floats)
+    """
+    linear = Model(linear_fit)
+
+    # Filter out any NaNs else ODR breaks.
+
+    nan_idx = np.where(np.isnan(x) == False)
+
+    # Fit using SciPy's ODR
+
+    odr_data = RealData(x[nan_idx], y[nan_idx],
+                        sx=x_err[nan_idx], sy=y_err[nan_idx])
+
+    odr_run = ODR(odr_data, linear, beta0=[2, 0])
+
+    odr_output = odr_run.run()
+
+    m, c = odr_output.beta
+    m_err, c_err = odr_output.sd_beta
+
+    return m, m_err, c, c_err
     
