@@ -282,6 +282,7 @@ def bootstrap_tw(flux, flux_err,
                  pa=45, pa_err=1,
                  inclination=30,
                  n_bootstraps=1000,
+                 save_in_file=False,
                  bootstrap_filename='bootstraps.txt',
                  overwrite_bootstraps=False,
                  pattern_speed_filename='pattern_speeds.txt',
@@ -386,15 +387,19 @@ def bootstrap_tw(flux, flux_err,
     omega_bar_err_up = np.nanpercentile(m_bootstrap, 84) - omega_bar
     omega_bar_err_down = omega_bar - np.nanpercentile(m_bootstrap, 16)
     
-
     # Write this pattern speed out
+    
+    if save_in_file:
+        
+        np.savetxt(pattern_speed_filename,
+                   np.c_[omega_bar, omega_bar_err_up, omega_bar_err_down],
+                   header='omega_bar, omega_bar_err_up, omega_bar_err_down (all km/s/kpc)')
 
-    np.savetxt(pattern_speed_filename,
-               np.c_[omega_bar, omega_bar_err_up, omega_bar_err_down],
-               header='omega_bar, omega_bar_err_up, omega_bar_err_down (all km/s/kpc)')
+        # Also save out each individual m and c
 
-    # Also save out each individual m and c
+        np.savetxt(bootstrap_filename,
+                   np.c_[m_bootstrap, c_bootstrap],
+                   header='m, c')
+    
+    return omega_bar, omega_bar_err_up, omega_bar_err_down
 
-    np.savetxt(bootstrap_filename,
-               np.c_[m_bootstrap, c_bootstrap],
-               header='m, c')
