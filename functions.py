@@ -58,9 +58,24 @@ def mean_in_pixel(X, Y, step, values):
     """
     bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
     bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
+    
     statistics, x_edge, y_edge, bins = scp.binned_statistic_2d(X.flatten(), Y.flatten(), values.flatten(),
                                                                'mean', bins=[bounds_x, bounds_y])
     return statistics
+
+def mean_in_pixel_np(X, Y, step, values):
+    """
+    Calculates the mean of values in each pixel made from X and Y data with sides equal to step value.
+    Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel), values (2D array with the shape of X and Y).
+    Outputs: mean values per pixel (2D array).
+    """
+    bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
+    bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
+    
+    statistics, x_edge, y_edge = np.histogram2d(X.flatten(), Y.flatten(), bins=[bounds_x, bounds_y], weights=values.flatten())
+    return statistics
+
+
 
 def centers_of_pixel(X, Y, step):
     """
@@ -167,13 +182,13 @@ def add_uncertanties(vr, rho, vr_scale, rho_scale):
     Inputs: Values of velocity, flux and Cartesian coordinates and scales of randomization.
     Outputs: New values of velocity, flux and Cartesian coordinates.
     """ 
-    np.random.seed(100)
+    
+#     np.random.seed(100)
     vr_  = np.random.normal(loc=vr,  scale=vr_scale)
     rho_ = np.random.normal(loc=rho, scale=rho_scale)
+    
     return vr_, rho_
 
-
-##################################################### Tom's code:#################################################
 
 def linear_fit(theta, x):
     """
@@ -210,83 +225,17 @@ def odr_fit(x, x_err, y, y_err):
 
     return m, m_err, c, c_err
 
-
-
-def log_prob(theta, flux, flux_err, vel, vel_err,
-             x_cen, y_cen, centering_err,
-             pa, pa_err, inclination,
-             grid_step, slit_width):
-    r0, c, m1, m2 = theta
-
-    pa_bootstrap = pa + np.random.normal(loc=0, scale=pa_err)
-
-    # Swing this around if it passes through 0/360 degrees.
-
-    if pa_bootstrap < 0:
-        pa_bootstrap += 360
-    if pa_bootstrap > 360:
-        pa_bootstrap -= 360
-
-    x_cen_bootstrap = x_cen + np.random.normal(loc=0, scale=centering_err)
-    y_cen_bootstrap = y_cen + np.random.normal(loc=0, scale=centering_err)
-
-    grid_shape = flux.shape
-    grid_x = (np.arange(grid_shape[1]) - x_cen_bootstrap) * grid_step
-    grid_y = (np.arange(grid_shape[0]) - y_cen_bootstrap) * grid_step
-
-    x_coords, y_coords = np.meshgrid(grid_x, grid_y)
-
-    bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
-                      Velocity=vel, Velocity_err=vel_err,
-                      Xin=x_coords, Yin=y_coords, PAnodes=pa_bootstrap,
-                      inclin=inclination)
-
-    bar.tremaine_weinberg(slit_width=slit_width)
-
-    x_tw = bar.dfx_tw
-    v_tw = bar.dfV_tw
-
-    x_tw_err = bar.dfx_tw_err
-    v_tw_err = bar.dfV_tw_err
-
-    if m1 > 0 and m2 > 0 and 0 <= r0 <= np.nanmax(np.abs(x_tw)):
-        return log_likelihood(theta, x_tw, v_tw, x_tw_err, v_tw_err)
-    return -np.inf
-
-
-def log_likelihood(theta, x_tw, v_tw, x_tw_err, v_tw_err):
-    r0, c, m1, m2 = theta
-
-    # Split up the data by r0 into the two slopes we want to fit
-
-    idx_inner = np.where(np.abs(x_tw) <= r0)
-    model_inner = x_tw[idx_inner] * m1 + c
-    chisq_inner = np.nansum((v_tw[idx_inner] - model_inner) ** 2 /
-                            (v_tw_err[idx_inner] ** 2 + (m1 * x_tw_err[idx_inner]) ** 2))
-
-    idx_outer = np.where(np.abs(x_tw) > r0)
-    model_outer = x_tw[idx_outer] * m2 + c
-    chisq_outer = np.nansum((v_tw[idx_outer] - model_outer) ** 2 /
-                            (v_tw_err[idx_outer] ** 2 + (m2 * x_tw_err[idx_outer]) ** 2))
-
-    chisq = chisq_inner + chisq_outer
-
-    return -0.5 * chisq
-
-
-def bootstrap_tw(flux, flux_err,
-                 vel, vel_err,
-                 x_array, y_array,
-                 grid_step=0.2, slit_width=1,
-                 centering_err=1,
-                 pa=45, pa_err=1,
-                 inclination=30,
+def bootstrap_tw(flux, vel, flux_err, vel_err, 
+                 X, Y,
+                 step,
+                 centering_err,
+                 pa, pa_err, 
+                 inclination, beta,
+                 bar_length,
                  n_bootstraps=1000,
                  save_in_file=False,
-                 bootstrap_filename='bootstraps.txt',
-                 overwrite_bootstraps=False,
-                 pattern_speed_filename='pattern_speeds.txt',
-                 correction_type=None
+                 bootstrap_filename='test_bootstraps.dat',
+                 pattern_speed_filename='test_patternspeeds.dat'
                  ):
     """Bootstrapped errors for the Tremaine-Weinberg pattern speed method.
     Bootstrap wrapper (bootstwrapper?) around pybar. For n_bootstraps, will perturb the position angle and centre by
@@ -321,64 +270,31 @@ def bootstrap_tw(flux, flux_err,
         pattern_speed_filename (str, optional): Where to save the final pattern speed (and error) output. Defaults to
             'pattern_speeds.txt'.
     """
-
-    # If centres not specified, use centre of image.
-
-
-    # Set up arrays for m and c. Load in any if applicable
-
     m_bootstrap = np.zeros(n_bootstraps)
-    c_bootstrap = np.zeros_like(m_bootstrap)
-
-    if not overwrite_bootstraps:
-
-        try:
-            m_loaded, c_loaded = np.loadtxt(bootstrap_filename,
-                                            unpack=True)
-
-            m_bootstrap[:len(m_loaded)] = m_loaded
-            c_bootstrap[:len(c_loaded)] = c_loaded
-
-        except OSError:
-            pass
+    c_bootstrap = np.zeros(n_bootstraps)
 
     for bootstrap_i in tqdm(range(n_bootstraps)):
-
-        if m_bootstrap[bootstrap_i] != 0:
-            # If we've already fitted here, just skip.
-
-            continue
-
-        pa_bootstrap = pa + np.random.normal(loc=0, scale=pa_err)
-
-        # Swing this around if it passes through 0/360 degrees.
-
-        if pa_bootstrap < 0:
-            pa_bootstrap += 360
-        if pa_bootstrap > 360:
-            pa_bootstrap -= 360
-
-        x_array += np.random.normal(loc=0, scale=centering_err)
-        y_array += np.random.normal(loc=0, scale=centering_err)
-
-        x_coords, y_coords = np.meshgrid(x_array, y_array, indexing='ij')
-
+        
+        pa_bootstrap = np.random.normal(loc=pa, scale=pa_err)
+        X += np.random.normal(loc=0, scale=step)
+        Y += np.random.normal(loc=0, scale=step)
+        
         bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
-                          Velocity=vel, Velocity_err=vel_err,
-                          Xin=x_coords, Yin=y_coords, PAnodes=pa_bootstrap,
-                          inclin=inclination)
+                  Velocity=vel, Velocity_err=vel_err,
+                  Yin=Y, Xin=X,
+                  inclin=np.rad2deg(inclination), PAnodes=np.rad2deg(pa_bootstrap), beta=np.rad2deg(beta))
 
-        bar.tremaine_weinberg(slit_width=slit_width)
+        bar.tremaine_weinberg()
 
         x_tw = bar.dfx_tw
         v_tw = bar.dfV_tw
-
+        
         x_tw_err = bar.dfx_tw_err
         v_tw_err = bar.dfV_tw_err
 
         m, m_err, c, c_err = odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
 
-        m_bootstrap[bootstrap_i] = m * 100 / np.sin(np.deg2rad(inclination))
+        m_bootstrap[bootstrap_i] = m * 100 / np.sin(inclination)
         c_bootstrap[bootstrap_i] = c * 100
 
     # Now we've bootstrapped, pull out the pattern speed and associated errors.

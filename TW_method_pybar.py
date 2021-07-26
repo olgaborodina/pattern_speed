@@ -24,48 +24,40 @@ t = 20
 to_Myr = 9.78462
 bar_length = 2.6
 save_plot = False
+step = 0.1
 
 FIG_DIR = Path('./../figures/')
 
-beta_array = np.deg2rad(np.linspace(0, 89, 51))
-i_array    = np.deg2rad(np.linspace(2, 89, 51))
+beta_array = np.deg2rad(np.linspace(0, 89, 41))
+i_array    = np.deg2rad(np.linspace(2, 89, 41))
 
 for beta in beta_array:
     for i in i_array:
-        X, Y, VX, VY, RHO = np.load(f'./../simulation/simulation/output_npy/data_{t}.npy')
+        X, Y, VX, VY, RHO = np.load(f'./../simulation/simulation/output_npy/weakbar/data_{t}.npy')
         VX, VY = f.add_solid_body_rotation(X, Y, VX, VY, 0.4)
         X, Y, VX, VY = f.rotate_bar(beta, X, Y, VX, VY)
         X, Y, VR = f.incline_galaxy(i, X, Y, VX, VY)
         
-        step = 0.1
+        step_initial = 0.07
+        RHO_array  = f.mean_in_pixel(X, Y, step_initial, RHO)
+        VR_array   = f.mean_in_pixel(X, Y, step_initial, VR * RHO) / RHO_array
 
-        VR_array          = f.mean_in_pixel(X, Y, step, VR)
-        RHO_array          = f.mean_in_pixel(X, Y, step, RHO)
-
-        x_center_array, y_center_array = f.centers_of_pixel(X, Y, step)
+        x_center_array, y_center_array = f.centers_of_pixel(X, Y, step_initial)
         
-        VR, RHO = f.add_uncertanties(VR, RHO, 0.1, 0.1 * RHO)
+        SNratio = 10
+        VR_array, RHO_array = f.add_uncertanties(VR_array, RHO_array, 0.1, RHO_array / SNratio)
+        VR_err = 0.1 * np.ones_like(VR_array)
+        RHO_err = RHO_array / SNratio
         
-        VR_array_sym = f.make_symmetric(x_center_array, VR_array)
-        RHO_array_sym = f.make_symmetric(x_center_array, RHO_array)
-        
-        not_bar_mask = (y_center_array > bar_length * np.sin(i)) | (y_center_array < - bar_length * np.sin(i))
-        VR_array_sym[not_bar_mask]  = np.nan
-        RHO_array_sym[not_bar_mask] = np.nan
-        
-
-        VR_err_array = 0.1 * np.ones_like(VR_array_sym)
-        RHO_err_array = RHO_array_sym / SNratio
-        
-        omega, omega_err_up, omega_err_down = f.bootstrap_tw(flux=RHO_array_sym, flux_err=RHO_err_array,
-                                               vel=VR_array_sym, vel_err=VR_err_array, 
-                                               x_array=x_center_array[:,0], y_array=y_center_array[0],
-                                               grid_step=step, slit_width=step,
+        omega, omega_err_up, omega_err_down = f.bootstrap_tw(flux=RHO_array, vel=VR_array, flux_err=RHO_err, vel_err=VR_err,
+                                               X=x_center_array, Y=y_center_array, 
+                                               step=step,
                                                centering_err=step,
-                                               pa=-90, pa_err=5, inclination=np.rad2deg(i),
+                                               pa= np.deg2rad(-90), pa_err=np.deg2rad(1),
+                                               inclination=i, beta=beta,
+                                               bar_length=bar_length,
                                                save_in_file=False,
-                                               overwrite_bootstraps=True,
-                                               n_bootstraps=1000
+                                               n_bootstraps=500
                                                )
         
         result_i = pd.DataFrame(data={'i':[i], 'beta': [beta], 
@@ -131,5 +123,5 @@ for beta in beta_array:
                         bbox_inches='tight', dpi=300)
             plt.close(fig)
             
-result.to_csv(f'fit_pattern_speed.csv', index=False, sep=' ')
+result.to_csv(f'fit_pattern_speed_weakbar_test.csv', index=False, sep=' ')
         
