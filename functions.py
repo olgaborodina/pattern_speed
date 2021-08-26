@@ -4,7 +4,7 @@ from scipy.odr import Model, ODR, RealData
 
 import os
 import pickle
-
+from multiprocessing import Pool
 import emcee
 import numpy as np
 import pybar.pybar_tom as pybar
@@ -50,42 +50,44 @@ def add_solid_body_rotation(X, Y, VX, VY, Omegap=0.4):
     VY += np.sqrt(X ** 2 + Y ** 2) * Omegap * np.cos(PHI)
     return VX, VY
 
-def mean_in_pixel(X, Y, step, values):
+def mean_in_pixel(X, Y, step, values, if_xy=False):
     """
     Calculates the mean of values in each pixel made from X and Y data with sides equal to step value.
     Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel), values (2D array with the shape of X and Y).
     Outputs: mean values per pixel (2D array).
     """
-    bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
-    bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
-    
+    bound_max_x = np.nanmax([abs(X.min().round(1)), X.max().round(1)])
+    bound_max_y = np.nanmax([abs(Y.min().round(1)), Y.max().round(1)])
+
+    right_side_x = np.arange(0, bound_max_x + step, step=step)
+    right_side_y = np.arange(0, bound_max_y + step, step=step)
+
+    bounds_x = np.concatenate([np.sort(-right_side_x[1:]), right_side_x])
+    bounds_y = np.concatenate([np.sort(-right_side_y[1:]), right_side_y])
+
     statistics, x_edge, y_edge, bins = scp.binned_statistic_2d(X.flatten(), Y.flatten(), values.flatten(),
                                                                'mean', bins=[bounds_x, bounds_y])
-    return statistics
 
-def mean_in_pixel_np(X, Y, step, values):
-    """
-    Calculates the mean of values in each pixel made from X and Y data with sides equal to step value.
-    Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel), values (2D array with the shape of X and Y).
-    Outputs: mean values per pixel (2D array).
-    """
-    bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
-    bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
+    if if_xy:
+        x_center_array = x_edge[:-1] + step / 2
+        y_center_array = y_edge[:-1] + step / 2
+        return statistics, np.meshgrid(x_center_array, y_center_array, indexing='ij')
+    else: return statistics
+
     
-    statistics, x_edge, y_edge = np.histogram2d(X.flatten(), Y.flatten(), bins=[bounds_x, bounds_y], weights=values.flatten())
-    return statistics
-
-
 
 def centers_of_pixel(X, Y, step):
     """
     Calculates the center of each pixel.
     Inputs: Cartesian coordinates X and Y (2D arrays with the same shape), step (float, the size of the pixel).
     Outputs: centers of the pixels (two 2D arrays corresponding to X_centers and Y_centers).
-    """    
-    bounds_x = np.arange(X.min().round(1) - step, X.max().round(1) + step, step=step)
-    bounds_y = np.arange(Y.min().round(1) - step, Y.max().round(1) + step, step=step)
-    return np.meshgrid(bounds_x[:-1] + step, bounds_y[:-1] + step, indexing='ij')
+    """
+    bound_max_x = np.nanmax([abs(X.min().round(1)), X.max().round(1)])
+    bound_max_y = np.nanmax([abs(Y.min().round(1)), Y.max().round(1)])
+    
+    bounds_x = np.arange(-bound_max_x, bound_max_x+step, step=step)
+    bounds_y = np.arange(-bound_max_y, bound_max_y+step, step=step)
+    return np.meshgrid(bounds_x, bounds_y, indexing='ij')
 
 def symmetrize_tw_integral(flux, x, y):
     """
@@ -182,8 +184,7 @@ def add_uncertanties(vr, rho, vr_scale, rho_scale):
     Inputs: Values of velocity, flux and Cartesian coordinates and scales of randomization.
     Outputs: New values of velocity, flux and Cartesian coordinates.
     """ 
-    
-#     np.random.seed(100)
+
     vr_  = np.random.normal(loc=vr,  scale=vr_scale)
     rho_ = np.random.normal(loc=rho, scale=rho_scale)
     
@@ -216,7 +217,7 @@ def odr_fit(x, x_err, y, y_err):
     odr_data = RealData(x[nan_idx], y[nan_idx],
                         sx=x_err[nan_idx], sy=y_err[nan_idx])
 
-    odr_run = ODR(odr_data, linear, beta0=[2, 0])
+    odr_run = ODR(odr_data, linear, beta0=[0.4, 0])
 
     odr_output = odr_run.run()
 
@@ -224,6 +225,34 @@ def odr_fit(x, x_err, y, y_err):
     m_err, c_err = odr_output.sd_beta
 
     return m, m_err, c, c_err
+    
+def bootstrap_iteration(flux, vel, flux_err, vel_err, 
+         X, Y,
+         step,
+         centering_err,
+         pa, pa_err, 
+         inclination, beta,
+         bar_length):
+    
+    pa_bootstrap = pa_err
+    X += centering_err[0]
+    Y += centering_err[1]
+    
+    bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
+              Velocity=vel, Velocity_err=vel_err,
+              Yin=Y, Xin=X,
+              inclin=np.rad2deg(inclination), PAnodes=np.rad2deg(pa_bootstrap), beta=np.rad2deg(beta))
+
+    bar.tremaine_weinberg()
+
+    x_tw = bar.dfx_tw
+    v_tw = bar.dfV_tw
+    
+    x_tw_err = bar.dfx_tw_err
+    v_tw_err = bar.dfV_tw_err
+
+    m, m_err, c, c_err = odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
+    return [m, c]
 
 def bootstrap_tw(flux, vel, flux_err, vel_err, 
                  X, Y,
@@ -270,32 +299,41 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
         pattern_speed_filename (str, optional): Where to save the final pattern speed (and error) output. Defaults to
             'pattern_speeds.txt'.
     """
-    m_bootstrap = np.zeros(n_bootstraps)
-    c_bootstrap = np.zeros(n_bootstraps)
+
+    m_bootstrap = []
+    c_bootstrap = []
+
+    random_pos = []
+    for i in range(n_bootstraps):
+        random_pos.append([np.random.normal(loc=pa, scale=pa_err), 
+                           np.random.normal(loc=0, scale=centering_err), 
+                           np.random.normal(loc=0, scale=centering_err)])
+
+
+    def get_result(theta):
+        m, c = theta
+        m_bootstrap.append(m * 100 / np.sin(inclination))
+        c_bootstrap.append(c * 100)
+
+    pool = Pool(4)
+
+    
 
     for bootstrap_i in tqdm(range(n_bootstraps)):
+        pool.apply_async(bootstrap_iteration, args=(flux, vel, flux_err, vel_err, 
+                 X, Y,
+                 step,
+                 random_pos[bootstrap_i][1:],
+                 pa, random_pos[bootstrap_i][0], 
+                 inclination, beta,
+                 bar_length 
+                 ), callback=get_result)
         
-        pa_bootstrap = np.random.normal(loc=pa, scale=pa_err)
-        X += np.random.normal(loc=0, scale=step)
-        Y += np.random.normal(loc=0, scale=step)
-        
-        bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
-                  Velocity=vel, Velocity_err=vel_err,
-                  Yin=Y, Xin=X,
-                  inclin=np.rad2deg(inclination), PAnodes=np.rad2deg(pa_bootstrap), beta=np.rad2deg(beta))
+    pool.close()
+    pool.join()
 
-        bar.tremaine_weinberg()
-
-        x_tw = bar.dfx_tw
-        v_tw = bar.dfV_tw
-        
-        x_tw_err = bar.dfx_tw_err
-        v_tw_err = bar.dfV_tw_err
-
-        m, m_err, c, c_err = odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
-
-        m_bootstrap[bootstrap_i] = m * 100 / np.sin(inclination)
-        c_bootstrap[bootstrap_i] = c * 100
+    m_bootstrap = np.array(m_bootstrap)
+    c_bootstrap = np.array(c_bootstrap)
 
     # Now we've bootstrapped, pull out the pattern speed and associated errors.
 
@@ -319,3 +357,11 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
     
     return omega_bar, omega_bar_err_up, omega_bar_err_down
 
+def pixelate(X, Y, RHO, VR, step):
+    if step == 0:
+        return RHO, VR, X, Y
+    
+    else:
+        RHO_array         = mean_in_pixel(X, Y, step, RHO)
+        VR_array          = mean_in_pixel(X, Y, step, VR * RHO) / RHO_array
+        return RHO_array, VR_array, centers_of_pixel(X, Y, step)

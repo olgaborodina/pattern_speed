@@ -19,36 +19,38 @@ plt.rc('text', usetex=True)
 
 result = pd.DataFrame(columns=['i', 'beta','omega', 'omega_err_up', 'omega_err_down'])
 
-SNratio = 10
+err_vr = 0.1
+err_rho = 0.05
 t = 20
 to_Myr = 9.78462
 bar_length = 2.6
 save_plot = False
 step = 0.1
+N_min = 930
 
 FIG_DIR = Path('./../figures/')
 
-beta_array = np.deg2rad(np.linspace(0, 89, 41))
-i_array    = np.deg2rad(np.linspace(2, 89, 41))
+beta_array = np.deg2rad(np.linspace(-180, 180, 17))
+i_array    = np.deg2rad(np.linspace(2, 89, 17))
 
 for beta in beta_array:
     for i in i_array:
-        X, Y, VX, VY, RHO = np.load(f'./../simulation/simulation/output_npy/weakbar/data_{t}.npy')
+        X, Y, VX, VY, RHO = np.load(f'./../simulation/simulation/output_npy/strongbar/data_{t}.npy')
+
+        VX[:, N_min:], VY[:, N_min:] = f.add_solid_body_rotation(X[:, N_min:], Y[:, N_min:], VX[:, N_min:], VY[:, N_min:], 0.6)
+        
         VX, VY = f.add_solid_body_rotation(X, Y, VX, VY, 0.4)
         X, Y, VX, VY = f.rotate_bar(beta, X, Y, VX, VY)
         X, Y, VR = f.incline_galaxy(i, X, Y, VX, VY)
         
-        step_initial = 0.07
-        RHO_array  = f.mean_in_pixel(X, Y, step_initial, RHO)
-        VR_array   = f.mean_in_pixel(X, Y, step_initial, VR * RHO) / RHO_array
+        RHO_array = RHO.copy()
+        VR_array  = VR.copy()
+        x_center_array, y_center_array = X.copy(), Y.copy()
+        
+        VR_err = err_vr * np.ones_like(VR_array)
+        RHO_err = err_rho * RHO_array
+        VR_array, RHO_array = f.add_uncertanties(VR_array, RHO_array, err_vr, RHO_array / SNratio)
 
-        x_center_array, y_center_array = f.centers_of_pixel(X, Y, step_initial)
-        
-        SNratio = 10
-        VR_array, RHO_array = f.add_uncertanties(VR_array, RHO_array, 0.1, RHO_array / SNratio)
-        VR_err = 0.1 * np.ones_like(VR_array)
-        RHO_err = RHO_array / SNratio
-        
         omega, omega_err_up, omega_err_down = f.bootstrap_tw(flux=RHO_array, vel=VR_array, flux_err=RHO_err, vel_err=VR_err,
                                                X=x_center_array, Y=y_center_array, 
                                                step=step,
@@ -119,9 +121,9 @@ for beta in beta_array:
             ax2.set_ylabel(r' $\langle v \rangle$ [km/s]', fontsize=15)
             ax2.legend(fontsize=15, loc='upper left')
             ax2.grid(ls='dashed')
-            plt.savefig(FIG_DIR / f'TW_method__{np.round(np.rad2deg(i), 0)}_{np.round(np.rad2deg(beta), 0)}_pybar.png', 
+            plt.savefig(FIG_DIR / f'TW_method_{np.round(np.rad2deg(i), 0)}_{np.round(np.rad2deg(beta), 0)}_pybar.png', 
                         bbox_inches='tight', dpi=300)
             plt.close(fig)
             
-result.to_csv(f'fit_pattern_speed_weakbar_test.csv', index=False, sep=' ')
+result.to_csv(f'fit_pattern_speed_unphysicalstrongbar_test.csv', index=False, sep=' ')
         
