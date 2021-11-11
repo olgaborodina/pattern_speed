@@ -184,7 +184,7 @@ def add_uncertanties(vr, rho, vr_scale, rho_scale):
     Inputs: Values of velocity, flux and Cartesian coordinates and scales of randomization.
     Outputs: New values of velocity, flux and Cartesian coordinates.
     """ 
-
+    np.random.seed(1)
     vr_  = np.random.normal(loc=vr,  scale=vr_scale)
     rho_ = np.random.normal(loc=rho, scale=rho_scale)
     
@@ -199,6 +199,30 @@ def linear_fit(theta, x):
     """
     return theta[0] * x + theta[1]
 
+def fit(bar, small_values_cut=True):
+    x_tw = bar.dfx_tw
+    v_tw = bar.dfV_tw
+
+    x_tw_err = bar.dfx_tw_err
+    v_tw_err = bar.dfV_tw_err
+    
+    if small_values_cut == True:
+        not_bar_mask = ((bar.y_slits <
+            abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) + 5 * bar.slit_width) &
+                    (bar.y_slits >
+            - abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) - 5 * bar.slit_width) &
+            (np.abs(x_tw) >  bar.slit_width))
+    else:
+        not_bar_mask = ((bar.y_slits <
+            abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) + 5 * bar.slit_width) &
+                    (bar.y_slits >
+            - abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) - 5 * bar.slit_width))
+
+    if len(x_tw[not_bar_mask]) == 0:
+        m = m_err = c = c_err = np.nan 
+    else:
+        m, m_err, c, c_err = odr_fit(x_tw[not_bar_mask], x_tw_err[not_bar_mask], v_tw[not_bar_mask], v_tw_err[not_bar_mask])
+    return m, m_err, c, c_err, x_tw, v_tw, x_tw_err, v_tw_err
 
 def odr_fit(x, x_err, y, y_err):
     """
@@ -251,7 +275,17 @@ def bootstrap_iteration(flux, vel, flux_err, vel_err,
     x_tw_err = bar.dfx_tw_err
     v_tw_err = bar.dfV_tw_err
 
-    m, m_err, c, c_err = odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
+    bar_mask = ((bar.y_slits <
+            abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) + 5 * bar.slit_width) |
+                (bar.y_slits >
+            - abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) - 5 * bar.slit_width) |
+                (np.abs(x_tw) > step))
+    if len(x_tw[bar_mask]) == 0:
+        m = 0
+        c = 0
+        print('I am hereeee')
+    else:
+        m, m_err, c, c_err = odr_fit(x_tw[bar_mask], x_tw_err[bar_mask], v_tw[bar_mask], v_tw_err[ar_mask])
     return [m, c]
 
 def bootstrap_tw(flux, vel, flux_err, vel_err, 
@@ -317,7 +351,6 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
 
     pool = Pool(4)
 
-    
 
     for bootstrap_i in tqdm(range(n_bootstraps)):
         pool.apply_async(bootstrap_iteration, args=(flux, vel, flux_err, vel_err, 
@@ -328,7 +361,6 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
                  inclination, beta,
                  bar_length 
                  ), callback=get_result)
-        
     pool.close()
     pool.join()
 

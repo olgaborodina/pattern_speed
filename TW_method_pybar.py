@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 import functions as f
 from pathlib import Path
-import pybar.pybar as pybar
+import pybar.pybar_tom as pybar
 
 import os
 os.environ["PATH"] += os.pathsep + '/usr/local/texlive/2021/bin/universal-darwin'
@@ -30,12 +30,12 @@ N_min = 930
 
 FIG_DIR = Path('./../figures/')
 
-beta_array = np.deg2rad(np.linspace(-180, 180, 17))
+beta_array = np.deg2rad(np.linspace(0, 180, 17))
 i_array    = np.deg2rad(np.linspace(2, 89, 17))
 
 for beta in beta_array:
     for i in i_array:
-        X, Y, VX, VY, RHO = np.load(f'./../simulation/simulation/output_npy/strongbar/data_{t}.npy')
+        X, Y, VX, VY, RHO = np.load(f'./output_npy/strongbar/data_{t}.npy')
 
         VX[:, N_min:], VY[:, N_min:] = f.add_solid_body_rotation(X[:, N_min:], Y[:, N_min:], VX[:, N_min:], VY[:, N_min:], 0.6)
         
@@ -49,7 +49,7 @@ for beta in beta_array:
         
         VR_err = err_vr * np.ones_like(VR_array)
         RHO_err = err_rho * RHO_array
-        VR_array, RHO_array = f.add_uncertanties(VR_array, RHO_array, err_vr, RHO_array / SNratio)
+        VR_array, RHO_array = f.add_uncertanties(VR_array, RHO_array, err_vr, RHO_array * err_rho)
 
         omega, omega_err_up, omega_err_down = f.bootstrap_tw(flux=RHO_array, vel=VR_array, flux_err=RHO_err, vel_err=VR_err,
                                                X=x_center_array, Y=y_center_array, 
@@ -58,7 +58,7 @@ for beta in beta_array:
                                                pa= np.deg2rad(-90), pa_err=np.deg2rad(1),
                                                inclination=i, beta=beta,
                                                bar_length=bar_length,
-                                               save_in_file=False,
+                                               save_in_file=True,
                                                n_bootstraps=500
                                                )
         
