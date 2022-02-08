@@ -199,12 +199,15 @@ def linear_fit(theta, x):
     """
     return theta[0] * x + theta[1]
 
-def fit(bar, small_values_cut=True):
-    x_tw = bar.dfx_tw
-    v_tw = bar.dfV_tw
+def remove_nan(a):
+    return np.array([np.nan if x=='NaN' else x for x in a])
 
-    x_tw_err = bar.dfx_tw_err
-    v_tw_err = bar.dfV_tw_err
+def fit(bar, small_values_cut=True):
+    x_tw = remove_nan(bar.dfx_tw)
+    v_tw = remove_nan(bar.dfV_tw)
+
+    x_tw_err = remove_nan(bar.dfx_tw_err)
+    v_tw_err = remove_nan(bar.dfV_tw_err)
     
     if small_values_cut == True:
         not_bar_mask = ((bar.y_slits <
