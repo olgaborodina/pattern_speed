@@ -184,7 +184,7 @@ def add_uncertanties(vr, rho, vr_scale, rho_scale):
     Inputs: Values of velocity, flux and Cartesian coordinates and scales of randomization.
     Outputs: New values of velocity, flux and Cartesian coordinates.
     """ 
-    np.random.seed(1)
+#     np.random.seed(1)
     vr_  = np.random.normal(loc=vr,  scale=vr_scale)
     rho_ = np.random.normal(loc=rho, scale=rho_scale)
     
@@ -225,7 +225,7 @@ def fit(bar, small_values_cut=True):
         m = m_err = c = c_err = np.nan 
     else:
         m, m_err, c, c_err = odr_fit(x_tw[not_bar_mask], x_tw_err[not_bar_mask], v_tw[not_bar_mask], v_tw_err[not_bar_mask])
-    return m, m_err, c, c_err, x_tw, v_tw, x_tw_err, v_tw_err
+    return m, m_err, c, c_err, x_tw, v_tw, x_tw_err, v_tw_err, not_bar_mask
 
 def odr_fit(x, x_err, y, y_err):
     """
@@ -267,29 +267,16 @@ def bootstrap_iteration(flux, vel, flux_err, vel_err,
     
     bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
               Velocity=vel, Velocity_err=vel_err,
-              Yin=Y, Xin=X,
-              inclin=np.rad2deg(inclination), PAnodes=np.rad2deg(pa_bootstrap), beta=np.rad2deg(beta))
+              Yin=Y, Xin=X, bar_length=bar_length,
+              inclin=np.rad2deg(inclination), PAnodes=pa_bootstrap, beta=np.rad2deg(beta))
 
+    
     bar.tremaine_weinberg()
 
-    x_tw = bar.dfx_tw
-    v_tw = bar.dfV_tw
-    
-    x_tw_err = bar.dfx_tw_err
-    v_tw_err = bar.dfV_tw_err
 
-    bar_mask = ((bar.y_slits <
-            abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) + 5 * bar.slit_width) |
-                (bar.y_slits >
-            - abs(bar.bar_length * np.cos(np.deg2rad(bar.inclin)) * np.sin(np.deg2rad(bar.beta))) - 5 * bar.slit_width) |
-                (np.abs(x_tw) > step))
-    if len(x_tw[bar_mask]) == 0:
-        m = 0
-        c = 0
-        print('I am hereeee')
-    else:
-        m, m_err, c, c_err = odr_fit(x_tw[bar_mask], x_tw_err[bar_mask], v_tw[bar_mask], v_tw_err[ar_mask])
-    return [m, c]
+    omega_bar, omega_bar_err, c, c_err, x_tw, v_tw, x_tw_err, v_tw_err, mask = fit(bar, small_values_cut=True)
+
+    return [omega_bar, c]
 
 def bootstrap_tw(flux, vel, flux_err, vel_err, 
                  X, Y,
@@ -352,7 +339,7 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
         m_bootstrap.append(m * 100 / np.sin(inclination))
         c_bootstrap.append(c * 100)
 
-    pool = Pool(4)
+    pool = Pool(10)
 
 
     for bootstrap_i in tqdm(range(n_bootstraps)):
@@ -367,8 +354,24 @@ def bootstrap_tw(flux, vel, flux_err, vel_err,
     pool.close()
     pool.join()
 
+    # for bootstrap_i in tqdm(range(n_bootstraps)):
+    #     m, c = bootstrap_iteration(flux, vel, flux_err, vel_err, 
+    #              X, Y,
+    #              step,
+    #              random_pos[bootstrap_i][1:],
+    #              pa, random_pos[bootstrap_i][0], 
+    #              inclination, beta,
+    #              bar_length 
+    #              )
+    #     m_bootstrap.append(m * 100 / np.sin(inclination))
+    #     c_bootstrap.append(c * 100)
+
+    #     print(m_bootstrap)
+
+
     m_bootstrap = np.array(m_bootstrap)
     c_bootstrap = np.array(c_bootstrap)
+
 
     # Now we've bootstrapped, pull out the pattern speed and associated errors.
 
